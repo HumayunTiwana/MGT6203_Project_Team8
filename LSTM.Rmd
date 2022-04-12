@@ -1,0 +1,301 @@
+---
+title: "LSTM Model"
+output: html_notebook
+---
+
+```{r}
+# Core Tidyverse
+library(tidyverse)
+library(glue)
+library(forcats)
+# Time Series
+library(timetk)
+library(tidyquant)
+
+
+# Visualization
+library(ggplot2)
+library(cowplot)
+# Preprocessing
+library(recipes)
+# Sampling / Accuracy
+library(rsample)
+library(yardstick) 
+# Modeling
+#library(keras)
+library(tibbletime)
+```
+
+```{r}
+library(tensorflow)
+install_tensorflow(method = "auto")
+```
+
+```{r}
+install.packages("keras")
+library(keras)
+install_keras()
+```
+
+```{r}
+# Import the data and look at the first six rows
+ASX200_data <- read.csv(file = 'C:/Users/humay/Downloads/ASX200.csv')
+ASX200_data$Date <- as.Date(ASX200_data$Date, format = "%m/%d/%Y")
+head(ASX200_data)
+```
+```{r}
+q <-ggplot(ASX200_data,aes(x = Date, y = ASX200,color=ASX200)) + 
+         geom_line() +
+         labs(x = "Year", y = "ASX200")
+q
+```
+
+```{r}
+data_1 <- ASX200_data %>% select(Date,ASX200) %>% rename(index=Date,value=ASX200)
+data_2 <- data_1 %>% tk_tbl()%>% as_tbl_time(index = index)
+data_2
+```
+```{r}
+p1 <- data_2 %>%
+    ggplot(aes(index, value)) +
+    geom_point(color = palette_light()[[1]], alpha = 0.5) +
+    theme_tq() +
+    labs(
+        title = "From 2010 to 2020 (Full Data Set)"
+    )
+p2 <- data_2 %>%
+    filter_time("2015" ~ "2017") %>%
+    ggplot(aes(index, value)) +
+    geom_line(color = palette_light()[[1]], alpha = 0.5) +
+    geom_point(color = palette_light()[[1]]) +
+    geom_smooth(method = "loess", span = 0.2, se = FALSE) +
+    theme_tq() +
+    labs(
+        title = "2015 to 2017 (Zoomed In To Show Cycle)",
+        caption = "ASX200"
+    )
+p_title <- ggdraw() + 
+    draw_label("ASX200", size = 18, fontface = "bold", colour = palette_light()[[1]])
+plot_grid(p_title, p1, p2, ncol = 1, rel_heights = c(0.1, 1, 1))
+```
+
+```{r}
+periods_train <- 7 * 30 * 12
+periods_test  <- 3 * 30 * 12
+#skip_span     <- 12 * 20
+rolling_origin_resamples <- rolling_origin(
+    data_2 ,
+    initial    = periods_train,
+    assess     = periods_test,
+    cumulative = FALSE,
+    #skip       = skip_span
+)
+rolling_origin_resamples
+```
+```{r}
+split    <- rolling_origin_resamples$splits[[10]]
+split_id <- rolling_origin_resamples$id[[10]]
+```
+
+```{r}
+df_trn <- training(split)
+df_tst <- testing(split)
+df <- bind_rows(
+    df_trn %>% add_column(key = "training"),
+    df_tst %>% add_column(key = "testing")
+) %>% 
+    as_tbl_time(index = index)
+df
+```
+```{r}
+rec_obj <- recipe(value ~ ., df) %>%
+    step_sqrt(value) %>%
+    step_center(value) %>%
+    step_scale(value) %>%
+    prep()
+df_processed_tbl <- bake(rec_obj, df)
+df_processed_tbl
+```
+```{r}
+nrow(df_tst)
+nrow(df_trn)
+rec_obj
+```
+```{r}
+center_history <- rec_obj$steps[[2]]$means
+scale_history  <- rec_obj$steps[[3]]$sds
+c("center" = center_history, "scale" = scale_history)
+
+```
+
+
+```{r}
+# Model inputs
+lag_setting  <- 1080 # = nrow(df_tst)
+batch_size   <- 40
+train_length <- 2520
+tsteps       <- 1
+epochs       <- 300
+```
+
+```{r}
+# Training Set
+lag_train_tbl <- df_processed_tbl %>%
+    mutate(value_lag = lag(value, n = lag_setting)) %>%
+    filter(!is.na(value_lag)) %>%
+    filter(key == "training") %>%
+    tail(train_length)
+x_train_vec <- lag_train_tbl$value_lag
+x_train_arr <- array(data = x_train_vec, dim = c(length(x_train_vec), 1, 1))
+y_train_vec <- lag_train_tbl$value
+y_train_arr <- array(data = y_train_vec, dim = c(length(y_train_vec), 1))
+# Testing Set
+lag_test_tbl <- df_processed_tbl %>%
+    mutate(
+        value_lag = lag(value, n = lag_setting)
+    ) %>%
+    filter(!is.na(value_lag)) %>%
+    filter(key == "testing")
+x_test_vec <- lag_test_tbl$value_lag
+x_test_arr <- array(data = x_test_vec, dim = c(length(x_test_vec), 1, 1))
+y_test_vec <- lag_test_tbl$value
+y_test_arr <- array(data = y_test_vec, dim = c(length(y_test_vec), 1))
+```
+
+
+
+
+
+```{r}
+model <- keras_model_sequential()
+model %>%
+    layer_lstm(units            = 50, 
+               input_shape      = c(tsteps, 1), 
+               batch_size       = batch_size,
+               return_sequences = TRUE, 
+               stateful         = TRUE) %>% 
+    layer_lstm(units            = 50, 
+               return_sequences = FALSE, 
+               stateful         = TRUE) %>% 
+    layer_dense(units = 1)
+model %>% 
+    compile(loss = 'mae', optimizer = 'adam')
+model
+```
+
+
+```{r}
+for (i in 1:epochs) {
+    model %>% fit(x          = x_train_arr, 
+                  y          = y_train_arr, 
+                  batch_size = batch_size,
+                  epochs     = 1, 
+                  verbose    = 1, 
+                  shuffle    = FALSE)
+    
+    model %>% reset_states()
+    cat("Epoch: ", i)
+    
+}
+```
+
+
+```{r}
+# Make Predictions
+pred_out <- model %>% 
+    predict(x_test_arr, batch_size = batch_size) %>%
+    .[,1] 
+
+# Retransform values
+pred_tbl <- tibble(
+    index   = lag_test_tbl$index,
+    value   = (pred_out * scale_history + center_history)^2
+) 
+
+# Combine actual data with predictions
+tbl_1 <- df_trn %>%
+    add_column(key = "actual")
+
+tbl_2 <- df_tst %>%
+    add_column(key = "actual")
+
+tbl_3 <- pred_tbl %>%
+    add_column(key = "predict")
+
+# Create time_bind_rows() to solve dplyr issue
+time_bind_rows <- function(data_1, data_2, index) {
+    index_expr <- enquo(index)
+    bind_rows(data_1, data_2) %>%
+        as_tbl_time(index = !! index_expr)
+}
+
+#ret <- list(tbl_1, tbl_2, tbl_3) %>%
+#    reduce(time_bind_rows, index = index) %>%
+#    arrange(key, index) %>%
+#    mutate(key = as_factor(key))
+
+ret <- rbind(tbl_1, tbl_2, tbl_3)
+
+ret
+```
+
+```{r}
+calc_rmse <- function(prediction_tbl) {
+    
+    rmse_calculation <- function(data) {
+        data %>%
+            spread(key = key, value = value) %>%
+            select(-index) %>%
+            filter(!is.na(predict)) %>%
+            rename(
+                truth    = actual,
+                estimate = predict
+            ) %>%
+            rmse(truth, estimate)
+    }
+    
+    safe_rmse <- possibly(rmse_calculation, otherwise = NA)
+    
+    safe_rmse(prediction_tbl)
+        
+}
+```
+
+
+```{r}
+ret
+calc_rmse(ret)$.estimate
+```
+
+
+```{r}
+# Setup single plot function
+plot_prediction <- function(data, id, alpha = 1, size = 2, base_size = 14) {
+    
+    rmse_val <- calc_rmse(data)$.estimate
+    
+    g <- data %>%
+        ggplot(aes(index, value, color = key)) +
+        geom_point(alpha = alpha, size = size) + 
+        theme_tq(base_size = base_size) +
+        scale_color_tq() +
+        theme(legend.position = "none") +
+        labs(
+            title = glue("{id}, RMSE: {round(rmse_val, digits = 1)}"),
+            x = "", y = ""
+        )
+    
+    return(g)
+}
+
+```
+
+```{r}
+ret %>% 
+    plot_prediction(id = split_id, alpha = 0.65) +
+    theme(legend.position = "bottom")
+```
+
+
+
+
