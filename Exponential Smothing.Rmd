@@ -18,6 +18,7 @@ library(TTR)
 ```{r}
 ASX200_data <- read.csv(file = 'C:/Users/humay/Downloads/ASX200.csv')
 ASX200_data$Date <- as.Date(ASX200_data$Date, format = "%m/%d/%Y")
+ASX200_data<- ASX200_data[order(ASX200_data$Date),]
 head(ASX200_data)
 ```
 ```{r}
@@ -77,7 +78,7 @@ ggplot(alpha.fit, aes(alpha, RMSE)) +
 
 ```{R}
 # refit model with alpha = .65
-ses_opt <- ses(train_dif, alpha = .65, h = 100)
+ses_opt <- ses(train_dif, alpha = .05, h = 100)
 
 # performance evaluations\
 accuracy(ses_opt, test_diff)
@@ -93,7 +94,7 @@ gridExtra::grid.arrange(p1, p2, nrow = 1)
 ```
 ```{r}
 # Create model. h is the number of periods to forecast
-ses_3 = ses(ASX200_data$ASX200, h = 181)
+ses_3 = ses(ASX200_data$ASX200, h = 60)
 ses_3$model
 
 # Plot model
@@ -108,7 +109,7 @@ accuracy(ses_3, test_data$ASX200)
 Exponential Smoothing w/ Trend
 ```{r}
 
-ses_4 = holt(ASX200_data$ASX200, h= 181)
+ses_4 = holt(ASX200_data$ASX200, h= 60)
 ses_4$model
 
 # Plot model
@@ -128,7 +129,7 @@ summary(model_ets)
 
 # Forecast out 181 days
 checkresiduals(model_ets)
-model_ets_fore = forecast(model_ets, h=181)
+model_ets_fore = forecast(model_ets, h=60)
 model_ets_fore
 
 #Plot
@@ -143,13 +144,13 @@ SMA() - simple moving average
 ```{r}
 
 # Create Model. n is the number of periods to average over
-meal_sma = SMA(ASX200_data$ASX200, n=10)
+asx_sma = SMA(ASX200_data$ASX200, n=10)
 
 # Plot
-plot.ts(meal_sma)
+plot.ts(asx_sma)
 
 # Score
-accuracy(meal_sma, test_data$ASX200)
+accuracy(asx_sma, test_data$ASX200)
 ```
 
 

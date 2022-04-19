@@ -1,0 +1,105 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+# Import the data and look at the first six rows
+ASX200_data <- read.csv(file = 'C:/Users/humay/Downloads/ASX200.csv')
+ASX200_data$Date <- as.Date(ASX200_data$Date, format = "%m/%d/%Y")
+head(ASX200_data)
+ASX200_data<- ASX200_data[order(ASX200_data$Date),]
+head(ASX200_data)
+```
+
+```{r}
+library(vars)
+library(mFilter)
+library(tseries)
+library(TSstudio)
+library(forecast)
+library(tidyverse)
+```
+```{r}
+data_1 <- ASX200_data %>% select(Date,ASX200) %>% rename(index=Date,value=ASX200)
+data_1 <- ts(data_1$value,frequency=365, start=c(2010, 7))
+autoplot(data_1)
+```
+```{r}
+data_2 <- ASX200_data %>% select(Date,CAC40) %>% rename(index=Date,value=CAC40)
+data_2 <- ts(data_2$value,frequency=365, start=c(2010, 7))
+autoplot(data_2)
+```
+
+
+```{r}
+ts_plot(data_1)
+ts_plot(data_2)
+```
+
+```{r}
+pp.test(data_1)
+pp.test(data_2)
+```
+```{r}
+lagselect <- VARselect(data_1, lag.max = 15, type = "const")
+lagselect$selection
+```
+
+```{r}
+lagselect <- VARselect(data_2, lag.max = 15, type = "const")
+lagselect$selection
+```
+```{r}
+v1 <- cbind(data_1, data_2)
+colnames(v1) <- cbind("ASX200","CAC40")
+```
+
+```{r}
+lagselect <- VARselect(v1, lag.max = 15, type = "const")
+lagselect$selection
+```
+
+```{r}
+Model1 <- VAR(v1, p = 2, type = "const", season = NULL, exog = NULL) 
+summary(Model1)
+```
+
+```{r}
+Serial1 <- serial.test(Model1, lags.pt = 5, type = "PT.asymptotic")
+Serial1
+```
+
+```{r}
+Arch1 <- arch.test(Model1, lags.multi = 15, multivariate.only = TRUE)
+Arch1
+```
+
+```{r}
+Norm1 <- normality.test(Model1, multivariate.only = TRUE)
+Norm1
+```
+```{r}
+Stability1 <- stability(Model1, type = "OLS-CUSUM")
+plot(Stability1)
+```
+```{r}
+GrangerASX200<- causality(Model1, cause = "ASX200")
+GrangerASX200
+GrangerCAC40 <- causality(Model1, cause = "CAC40")
+GrangerCAC40
+```
+
+```{r}
+RRPirf <- irf(Model1, impulse = "ASX200", response = "ASX200", n.ahead = 20, boot = TRUE)
+plot(RRPirf, ylab = "ASX200", main = "ASX200's shock to ASX200")
+M1irf <- irf(Model1, impulse = "CAC40", response = "CAC40", n.ahead = 20, boot = TRUE)
+plot(M1irf, ylab = "CAC40", main = "CAC40's shock to CAC40")
+```
+```{r}
+forecast <- predict(Model1, n.ahead = 90, ci = 0.95)
+fanchart(forecast, names = "ASX200", main = "Fanchart for ASX200", xlab = "Horizon", ylab = "ASx200")
+fanchart(forecast, names = "CAC40", main = "Fanchart for CAC40", xlab = "Horizon", ylab = "CAC40")
+forecast
+```
+

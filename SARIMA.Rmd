@@ -34,6 +34,7 @@ library(tibbletime)
 # Import the data and look at the first six rows
 ASX200_data <- read.csv(file = 'C:/Users/humay/Downloads/ASX200.csv')
 ASX200_data$Date <- as.Date(ASX200_data$Date, format = "%m/%d/%Y")
+ASX200_data<- ASX200_data[order(ASX200_data$Date),]
 head(ASX200_data)
 ```
 
@@ -42,6 +43,7 @@ data_1 <- ASX200_data %>% select(Date,ASX200) %>% rename(index=Date,value=ASX200
 data_1 <- ts(data_1$value,frequency=52, start=c(2010, 7))
 autoplot(data_1)
 ```
+
 ```{r}
 library(feasts)
 library(fpp3)
@@ -54,7 +56,7 @@ BoxCox.lambda(data_1)
 #value close to 1, so log transformation is not required
 ```
 ```{r}
-sdiff <- diff(data_1, lag=365)
+sdiff <- diff(data_1, lag=52)
 ggtsdisplay(sdiff)
 ```
 
@@ -112,5 +114,8 @@ checkresiduals(fit3)
 ```
 ```{r}
 autoplot(data_1) + autolayer(fit3$fitted,series='Fit')
+```
+```{r}
+autoplot(forecast(fit3))
 ```
 
