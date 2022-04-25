@@ -1,0 +1,123 @@
+---
+title: "SARIMA Model"
+author: "Team 8"
+date: "15/04/2022"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r}
+# Core Tidyverse
+library(tidyverse)
+library(glue)
+library(forcats)
+# Time Series
+library(timetk)
+library(tidyquant)
+
+
+# Visualization
+library(ggplot2)
+library(cowplot)
+# Preprocessing
+library(recipes)
+# Sampling / Accuracy
+library(rsample)
+library(yardstick) 
+# Modeling
+#library(keras)
+library(forecast)
+library(tibbletime)
+```
+
+
+```{r}
+# Import the data and look at the first six rows
+ASX200_data <- read.csv(file = 'C:/Users/humay/Downloads/ASX200.csv')
+ASX200_data$Date <- as.Date(ASX200_data$Date, format = "%m/%d/%Y")
+ASX200_data<- ASX200_data[order(ASX200_data$Date),]
+head(ASX200_data)
+```
+
+```{r}
+data_1 <- ASX200_data %>% select(Date,ASX200) %>% rename(index=Date,value=ASX200)
+data_1 <- ts(data_1$value,frequency=52, start=c(2010, 7))
+autoplot(data_1)
+```
+
+```{r}
+library(feasts)
+library(fpp3)
+set.seed(12345678)
+ggtsdisplay(data_1)
+```
+
+```{r}
+BoxCox.lambda(data_1)
+#value close to 1, so log transformation is not required
+```
+```{r}
+sdiff <- diff(data_1, lag=52)
+ggtsdisplay(sdiff)
+```
+
+```{r}
+#seasonal derivative
+sdifference <- diff(data_1, lag=52, differences=2)
+ggtsdisplay(sdifference)
+```
+```{r}
+#normal derivative
+rdiff <- diff(data_1)
+ggtsdisplay(rdiff)
+```
+```{r}
+fit1 <- Arima(data_1, order=c(1,1,0), seasonal=c(0,1,0),lambda = NULL)
+autoplot(fit1)
+```
+
+```{r}
+library(lmtest)
+coeftest(fit1)
+checkresiduals(fit1)
+ggtsdisplay(fit1$residuals)
+```
+
+```{r}
+fit2 <- Arima(data_1, order=c(1,1,0), seasonal=c(0,1,1),lambda = NULL)
+```
+
+
+```{r}
+autoplot(fit2)
+coeftest(fit2)
+checkresiduals(fit2)
+ggtsdisplay(fit2$residuals)
+```
+```{r}
+summary(fit1)
+summary(fit2)
+```
+```{r}
+fit3 <- Arima(data_1, order=c(1,1,4), seasonal=c(0,1,1),lambda = NULL)
+autoplot(fit3)
+coeftest(fit3)
+checkresiduals(fit3)
+ggtsdisplay(fit3$residuals)
+```
+
+```{r}
+summary(fit3)
+```
+
+```{r}
+checkresiduals(fit3)
+```
+```{r}
+autoplot(data_1) + autolayer(fit3$fitted,series='Fit')
+```
+```{r}
+autoplot(forecast(fit3))
+```
+

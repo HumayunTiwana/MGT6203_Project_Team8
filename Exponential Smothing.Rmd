@@ -1,0 +1,159 @@
+---
+title: "R Notebook"
+output:
+  pdf_document: default
+  html_notebook: default
+---
+
+
+```{r}
+library(tidyverse)
+library(fpp2)
+if (!require(dplyr)) install.packages("dplyr")
+library(dplyr)
+if (!require(forecast)) install.packages("forecast")
+library(forecast)
+if (!require(TTR)) install.packages("TTR")
+library(TTR)
+```
+
+```{r}
+ASX200_data <- read.csv(file = 'C:/Users/humay/Downloads/ASX200.csv')
+ASX200_data$Date <- as.Date(ASX200_data$Date, format = "%m/%d/%Y")
+ASX200_data<- ASX200_data[order(ASX200_data$Date),]
+head(ASX200_data)
+```
+```{r}
+data_1 <- ASX200_data %>% select(Date,ASX200) %>% rename(index=Date,value=ASX200)
+data_2 <- ts(data_1$value)
+plot.ts(data_2)
+```
+```{r}
+train <- window(data_2, end = 2400)
+test <- window(data_2, start = 2401)
+```
+
+Simple exponential smoothing
+alpha: Value of smoothing parameter for the level
+h: Number of periods for forecasting.
+```{r}
+ses_1 <- ses(train, alpha = .35, h = 181)
+autoplot(ses_1)
+accuracy(ses_1)
+```
+Remove the trend
+
+```{R}
+train_dif <- diff(train) 
+#Differential represents the change in stock price from the previous day
+autoplot(train_dif)
+```
+Differencing it effectively removes the rend from the data
+```{R}
+ses_2 <- ses(train_dif, alpha = .35, h = 181)
+autoplot(ses_2)
+```
+
+```{r}
+test_diff <- diff(test)
+accuracy(ses_2, test_diff)
+```
+
+Identifying optimal alpha parameter
+```{R}
+# identify optimal alpha parameter
+alpha <- seq(.01, .99, by = .01)
+RMSE <- NA
+for(i in seq_along(alpha)) {
+  fit <- ses(train_dif, alpha = alpha[i], h = 181)
+  RMSE[i] <- accuracy(fit, test_diff)[2,2]
+}
+
+# convert to a data frame and idenitify min alpha value
+alpha.fit <- data_frame(alpha, RMSE)
+alpha.min <- filter(alpha.fit, RMSE == min(RMSE))
+
+# plot RMSE vs. alpha
+ggplot(alpha.fit, aes(alpha, RMSE)) +
+  geom_line() +
+  geom_point(data = alpha.min, aes(alpha, RMSE), size = 2, color = "blue")  
+```
+
+```{R}
+# refit model with alpha = .35
+ses_opt <- ses(train_dif, alpha = .30, h = 181)
+
+# performance evaluations\
+accuracy(ses_opt, test_diff)
+
+# plotting results
+p1 <- autoplot(ses_opt) +
+  theme(legend.position = "bottom")
+p2 <- autoplot(test_diff) +
+  autolayer(ses_opt, alpha = .30) +
+  ggtitle("Predicted vs. Actuals")
+
+gridExtra::grid.arrange(p1, p2, nrow = 2)
+```
+```{r}
+# Create model. h is the number of periods to forecast
+ses_3 = ses(train, h = 181)
+ses_3$model
+
+# Plot model
+autoplot(ses_3)
+
+test_data <- filter(ASX200_data, ASX200_data$Date > '2020-01-01')
+glimpse(test_data)
+# Find Accuracy scores for the model
+accuracy(ses_3, test_data$ASX200)
+```
+
+Exponential Smoothing w/ Trend
+```{r}
+
+ses_4 = holt(ASX200_data$ASX200, h= 181)
+ses_4$model
+
+# Plot model
+autoplot(ses_4)
+
+# Find Accuracy scores for the model
+accuracy(ses_4, test_data$ASX200)
+```
+
+ETS - error, trend, smoothing
+```{r}
+
+# Create Model
+model_ets = ets(ASX200_data$ASX200)
+autoplot(forecast(model_ets))
+summary(model_ets)
+
+# Forecast out 181 days
+checkresiduals(model_ets)
+model_ets_fore = forecast(model_ets, h=181)
+model_ets_fore
+
+#Plot
+autoplot(model_ets_fore)
+
+# Score
+accuracy(model_ets_fore, test_data$ASX200)
+```
+
+
+SMA() - simple moving average
+```{r}
+
+# Create Model. n is the number of periods to average over
+asx_sma = SMA(ASX200_data$ASX200, n=10)
+
+# Plot
+plot.ts(asx_sma)
+
+# Score
+accuracy(asx_sma, test_data$ASX200)
+```
+
+

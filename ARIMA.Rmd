@@ -1,0 +1,89 @@
+---
+title: "ARIIMA"
+author: "Team 8"
+date: "25/04/2022"
+output: html_document
+---
+
+```{r}
+# Core Tidyverse
+library(tidyverse)
+library(glue)
+library(forcats)
+# Time Series
+library(timetk)
+library(tidyquant)
+
+
+# Visualization
+library(ggplot2)
+library(cowplot)
+# Preprocessing
+library(recipes)
+# Sampling / Accuracy
+library(rsample)
+library(yardstick) 
+# Modeling
+#library(keras)
+library(forecast)
+library(tibbletime)
+```
+
+```{r}
+# Import the data and look at the first six rows
+ASX200_data <- read.csv(file = 'C:/Users/humay/Downloads/ASX200.csv')
+ASX200_data$Date <- as.Date(ASX200_data$Date, format = "%m/%d/%Y")
+ASX200_data<- ASX200_data[order(ASX200_data$Date),]
+head(ASX200_data)
+```
+```{r}
+data_1 <- ASX200_data %>% select(Date,ASX200) %>% rename(index=Date,value=ASX200)
+data_1 <- ts(data_1$value,frequency=365, start=c(2010, 7))
+autoplot(data_1)
+```
+```{r}
+library(tseries)
+adf.test(data_1, alternative="stationary", k=0)
+```
+
+
+```{r}
+library(feasts)
+library(fpp3)
+set.seed(12345678)
+ggtsdisplay(data_1)
+```
+
+```{r}
+acf(data_1, lag.max=100)
+pacf(data_1, lag.max=100)
+```
+```{r}
+fit1 <- Arima(data_1, order=c(0,1,1), lambda = NULL)
+```
+
+```{r}
+fit2 <- Arima(data_1, order=c(1,1,4), lambda = NULL)
+summary(fit2)
+```
+
+```{r}
+fit3 <- auto.arima(data_1, trace=TRUE)
+```
+```{r}
+summary(fit3)
+summary(fit2)
+```
+```{r}
+checkresiduals(fit3)
+checkresiduals(fit2)
+```
+
+```{r}
+autoplot(data_1) + autolayer(fit2$fitted,series='Fit')
+```
+```{r}
+autoplot(forecast(fit2))
+```
+
+
